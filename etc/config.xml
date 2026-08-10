@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Magenx. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <magenx_bestseller>
+            <general>
+                <enabled>1</enabled>
+                <count>20</count>
+                <period>month</period>
+            </general>
+            <badge>
+                <enabled>1</enabled>
+                <max_rank>10</max_rank>
+            </badge>
+        </magenx_bestseller>
+    </default>
+</config>

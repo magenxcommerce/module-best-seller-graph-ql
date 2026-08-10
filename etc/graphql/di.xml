@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Magenx. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- Expose the Best Sellers admin settings on the storeConfig GraphQL query
+         so the storefront can hide the menu link / badge when disabled and size
+         its lists to the configured count, without a second round trip. -->
+    <type name="Magento\StoreGraphQl\Model\Resolver\Store\StoreConfigDataProvider">
+        <arguments>
+            <argument name="extendedConfigData" xsi:type="array">
+                <item name="best_seller_enabled" xsi:type="string">magenx_bestseller/general/enabled</item>
+                <item name="best_seller_count" xsi:type="string">magenx_bestseller/general/count</item>
+                <item name="best_seller_period" xsi:type="string">magenx_bestseller/general/period</item>
+                <item name="best_seller_badge_enabled" xsi:type="string">magenx_bestseller/badge/enabled</item>
+                <item name="best_seller_badge_max_rank" xsi:type="string">magenx_bestseller/badge/max_rank</item>
+            </argument>
+        </arguments>
+    </type>
+</config>

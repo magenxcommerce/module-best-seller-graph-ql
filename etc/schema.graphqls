@@ -1,0 +1,44 @@
+# Copyright © Magenx. All rights reserved.
+
+type Query {
+    bestSellers(
+        category_id: Int @doc(description: "Restrict the ranking to a single category. Omit for the store-wide ranking.")
+        pageSize: Int @doc(description: "How many ranked products to return (capped at the store's configured best-seller count).")
+    ): BestSellers
+        @resolver(class: "Magenx\\BestSellerGraphQl\\Model\\Resolver\\BestSellers")
+        @doc(description: "The top best-selling products, store-wide or scoped to a category, ordered by quantity sold over the configured report period.")
+}
+
+type BestSellers @doc(description: "A ranked list of best-selling products.") {
+    items: [BestSellerItem!]! @doc(description: "The ranked best-selling products.")
+    total_count: Int @doc(description: "The number of ranked products returned.")
+}
+
+type BestSellerItem @doc(description: "A single best-selling product with its rank.") {
+    rank: Int! @doc(description: "The 1-based position of the product in the ranking.")
+    qty_ordered: Float @doc(description: "Total quantity sold over the report period.")
+    product: ProductInterface
+        @resolver(class: "Magenx\\BestSellerGraphQl\\Model\\Resolver\\BestSellerProduct")
+        @doc(description: "The ranked product. Null if it is no longer available.")
+}
+
+interface ProductInterface {
+    best_seller: BestSellerBadge
+        @resolver(class: "Magenx\\BestSellerGraphQl\\Model\\Resolver\\Product\\BestSellerBadge")
+        @doc(description: "The product's best-seller rank within its top-ranked category, or null when it does not rank within the configured threshold (or the badge is disabled).")
+}
+
+type BestSellerBadge @doc(description: "An Amazon-style per-category best-seller badge for a product.") {
+    rank: Int! @doc(description: "The product's 1-based rank within the category.")
+    category_id: Int @doc(description: "The id of the category the rank is for.")
+    category_name: String @doc(description: "The display name of the category.")
+    category_url_key: String @doc(description: "The URL key of the category.")
+}
+
+type StoreConfig {
+    best_seller_enabled: Boolean @doc(description: "Whether the best sellers feature is enabled for the store.")
+    best_seller_count: Int @doc(description: "How many products the store-wide / per-category best-seller lists return.")
+    best_seller_period: String @doc(description: "The report period the ranking is computed over: day, month or year.")
+    best_seller_badge_enabled: Boolean @doc(description: "Whether the per-category best-seller product badge is enabled.")
+    best_seller_badge_max_rank: Int @doc(description: "The highest rank that still earns a best-seller badge.")
+}

@@ -1,0 +1,30 @@
+{
+    "name": "magenx/module-best-seller-graph-ql",
+    "description": "GraphQL coverage for Magento best sellers: a bestSellers query (store-wide or per category) and an Amazon-style per-category best-seller badge on products. Reads the sales_bestsellers_aggregated_* report tables; leaves the core modules untouched.",
+    "config": {
+        "sort-packages": true
+    },
+    "require": {
+        "php": "~8.3.0||~8.4.0||~8.5.0",
+        "magento/framework": "*",
+        "magento/module-catalog": "*",
+        "magento/module-catalog-graph-ql": "*",
+        "magento/module-reports": "*",
+        "magento/module-sales": "*",
+        "magento/module-store": "*",
+        "magento/module-store-graph-ql": "*"
+    },
+    "type": "magento2-module",
+    "license": [
+        "OSL-3.0",
+        "AFL-3.0"
+    ],
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Magenx\\BestSellerGraphQl\\": ""
+        }
+    }
+}
