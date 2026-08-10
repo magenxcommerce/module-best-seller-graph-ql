@@ -1,5 +1,5 @@
 {
-    "name": "magenx/module-best-seller-graph-ql",
+    "name": "magenxcommerce/module-best-seller-graph-ql",
     "description": "GraphQL coverage for Magento best sellers: a bestSellers query (store-wide or per category) and an Amazon-style per-category best-seller badge on products. Reads the sales_bestsellers_aggregated_* report tables; leaves the core modules untouched.",
     "config": {
         "sort-packages": true
