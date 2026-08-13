@@ -3,3 +3,4 @@
 /.gitattributes export-ignore
 /.gitignore     export-ignore
 /phpcs.xml.dist export-ignore
+/Test           export-ignore

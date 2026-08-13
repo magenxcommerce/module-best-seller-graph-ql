@@ -7,8 +7,11 @@
     "require": {
         "php": "~8.3.0||~8.4.0||~8.5.0",
         "magento/framework": "*",
+        "magento/module-backend": "*",
         "magento/module-catalog": "*",
         "magento/module-catalog-graph-ql": "*",
+        "magento/module-config": "*",
+        "magento/module-graph-ql": "*",
         "magento/module-reports": "*",
         "magento/module-sales": "*",
         "magento/module-store": "*",

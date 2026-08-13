@@ -2,24 +2,24 @@
 
 type Query {
     bestSellers(
-        category_id: Int @doc(description: "Restrict the ranking to a single category. Omit for the store-wide ranking.")
+        category_id: Int @doc(description: "Restrict the ranking to a single category and its descendants. Must belong to this store's category tree. Omit for the store-wide ranking.")
         pageSize: Int @doc(description: "How many ranked products to return (capped at the store's configured best-seller count).")
     ): BestSellers
         @resolver(class: "Magenx\\BestSellerGraphQl\\Model\\Resolver\\BestSellers")
-        @doc(description: "The top best-selling products, store-wide or scoped to a category, ordered by quantity sold over the configured report period.")
+        @doc(description: "The top best-selling products, store-wide or scoped to a category, ordered by quantity sold during the current bucket of the configured report period. Products the storefront does not show (disabled, not visible individually, or not assigned to this website) are excluded. Returns an empty list when the feature is disabled or the category does not belong to this store.")
 }
 
 type BestSellers @doc(description: "A ranked list of best-selling products.") {
     items: [BestSellerItem!]! @doc(description: "The ranked best-selling products.")
-    total_count: Int @doc(description: "The number of ranked products returned.")
+    total_count: Int @doc(description: "The number of items returned by this request. Not the size of the full ranking.")
 }
 
 type BestSellerItem @doc(description: "A single best-selling product with its rank.") {
-    rank: Int! @doc(description: "The 1-based position of the product in the ranking.")
-    qty_ordered: Float @doc(description: "Total quantity sold over the report period.")
+    rank: Int! @doc(description: "The 1-based position of the product in the ranking. Always contiguous: excluded products do not leave gaps.")
+    qty_ordered: Float @doc(description: "Total quantity sold during the current bucket of the report period.")
     product: ProductInterface
         @resolver(class: "Magenx\\BestSellerGraphQl\\Model\\Resolver\\BestSellerProduct")
-        @doc(description: "The ranked product. Null if it is no longer available.")
+        @doc(description: "The ranked product.")
 }
 
 interface ProductInterface {
@@ -38,7 +38,7 @@ type BestSellerBadge @doc(description: "An Amazon-style per-category best-seller
 type StoreConfig {
     best_seller_enabled: Boolean @doc(description: "Whether the best sellers feature is enabled for the store.")
     best_seller_count: Int @doc(description: "How many products the store-wide / per-category best-seller lists return.")
-    best_seller_period: String @doc(description: "The report period the ranking is computed over: day, month or year.")
+    best_seller_period: String @doc(description: "The report period bucket the ranking is computed over: day, month or year.")
     best_seller_badge_enabled: Boolean @doc(description: "Whether the per-category best-seller product badge is enabled.")
     best_seller_badge_max_rank: Int @doc(description: "The highest rank that still earns a best-seller badge.")
 }

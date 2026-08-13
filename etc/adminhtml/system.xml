@@ -24,7 +24,7 @@
                 <field id="count" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Number of Products</label>
                     <validate>validate-digits validate-greater-than-zero</validate>
-                    <comment>How many products the store-wide and per-category best-seller lists return.</comment>
+                    <comment>How many products the store-wide and per-category best-seller lists return. Products the storefront hides (disabled, not visible individually, or not in this website) are excluded from the ranking.</comment>
                     <depends>
                         <field id="enabled">1</field>
                     </depends>
@@ -32,7 +32,7 @@
                 <field id="period" translate="label" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Report Period</label>
                     <source_model>Magenx\BestSellerGraphQl\Model\Config\Source\Period</source_model>
-                    <comment>The aggregated report period the ranking is computed over.</comment>
+                    <comment>The aggregated report bucket the ranking is computed over: sales so far today, this month, or this year (in the store's timezone). Early in a bucket the ranking reflects only a partial period — on Daily, shortly after midnight, it may be empty.</comment>
                     <depends>
                         <field id="enabled">1</field>
                     </depends>

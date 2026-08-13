@@ -8,6 +8,7 @@ namespace Magenx\BestSellerGraphQl\Model\Resolver\Product;
 
 use Magenx\BestSellerGraphQl\Model\BestSellerProvider;
 use Magenx\BestSellerGraphQl\Model\Config;
+use Magenx\BestSellerGraphQl\Model\StoreCategoryTree;
 use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Magento\Catalog\Api\Data\ProductInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
@@ -24,11 +25,10 @@ use Magento\Framework\GraphQl\Query\Resolver\ContextInterface;
  * grid branch in a single call, so it collects all product ids and computes
  * their badges with {@see BestSellerProvider::getBadges()} in a bounded number
  * of queries (a pair per grid), then maps the answers back. That is what makes
- * this field safe on listing grids (PRODUCT_CARD_FIELDS) — the same anti-fan-out
- * mechanism the price_history resolver uses. A plain ResolverInterface here
- * would run getBadge()'s ~3 queries per card, reintroducing the per-product
- * fan-out the storefront carefully avoids, so this MUST stay a
- * BatchResolverInterface.
+ * this field safe on listing grids (PRODUCT_CARD_FIELDS) — the same
+ * anti-fan-out mechanism the price_history resolver uses. Resolving one product
+ * at a time here would put a handful of ranking queries behind every card, so
+ * this MUST stay a BatchResolverInterface.
  *
  * Returns null for a product when the badge is disabled or the product does not
  * rank within the configured threshold in any of its categories, so it never
@@ -39,11 +39,13 @@ class BestSellerBadge implements BatchResolverInterface
     /**
      * @param Config $config
      * @param BestSellerProvider $provider
+     * @param StoreCategoryTree $storeCategoryTree
      * @param CategoryRepositoryInterface $categoryRepository
      */
     public function __construct(
         private readonly Config $config,
         private readonly BestSellerProvider $provider,
+        private readonly StoreCategoryTree $storeCategoryTree,
         private readonly CategoryRepositoryInterface $categoryRepository
     ) {
     }
@@ -62,21 +64,24 @@ class BestSellerBadge implements BatchResolverInterface
         $storeId = (int) $store->getId();
         $enabled = $this->config->isBadgeEnabled($storeId);
 
-        // Gather every product id in this batch (one grid / query branch).
-        $ids = [];
-        foreach ($requests as $request) {
+        // Resolve each request's product id once, up front: the mapping below
+        // needs it a second time and digging it back out of the request value
+        // is not free.
+        $productIds = [];
+        foreach ($requests as $key => $request) {
             $product = $this->productOf($request);
-            if ($product !== null) {
-                $ids[] = (int) $product->getId();
-            }
+            $productIds[$key] = $product !== null ? (int) $product->getId() : 0;
         }
+
+        $ids = array_values(array_filter($productIds));
 
         $badges = ($enabled && $ids)
             ? $this->provider->getBadges(
                 $storeId,
                 $ids,
                 $this->config->getBadgeMaxRank($storeId),
-                $this->config->getPeriod($storeId)
+                $this->config->getPeriod($storeId),
+                $this->storeCategoryTree->getRootCategoryId($store)
             )
             : [];
 
@@ -84,11 +89,10 @@ class BestSellerBadge implements BatchResolverInterface
         // grid where several products rank in the same category loads it once.
         $categoryCache = [];
 
-        foreach ($requests as $request) {
-            $product = $this->productOf($request);
-            $productId = $product !== null ? (int) $product->getId() : 0;
+        foreach ($requests as $key => $request) {
+            $productId = $productIds[$key] ?? 0;
 
-            if (!$enabled || !isset($badges[$productId])) {
+            if (!isset($badges[$productId])) {
                 $response->addResponse($request, null);
                 continue;
             }

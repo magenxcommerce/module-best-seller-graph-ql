@@ -15,12 +15,14 @@ module adds that coverage without touching any core module (the same
   best-selling products, store-wide or scoped to a single category, ordered by
   quantity sold over the configured report period. Each `BestSellerItem` carries
   a `rank` and resolves a full `ProductInterface` (so the storefront can select
-  any product fields it needs).
+  any product fields it needs). The whole page costs one product query, not one
+  per row.
 - **`ProductInterface.best_seller: BestSellerBadge`** — an Amazon-style
   per-category badge (`rank`, `category_id`, `category_name`, `category_url_key`)
   computed as the product's best rank across the categories it belongs to, or
-  `null` when it doesn't rank within the configured threshold. **Runs per
-  product** — query it on the PDP only, not on listing grids.
+  `null` when it doesn't rank within the configured threshold. Implemented as a
+  **batch resolver**: an entire grid costs a bounded pair of queries, so it is
+  safe to select on listing pages as well as the PDP.
 - **`StoreConfig` flags** — `best_seller_enabled`, `best_seller_count`,
   `best_seller_period`, `best_seller_badge_enabled`, `best_seller_badge_max_rank`
   (via `extendedConfigData`, the same pattern as `product_alert_allow_price`).
@@ -30,13 +32,26 @@ module adds that coverage without touching any core module (the same
 Reads `sales_bestsellers_aggregated_<period>` filtered to the request's store id,
 summing `qty_ordered` per product. Per-category ranking joins
 `catalog_category_product`; a product's badge rank in a category is
-`1 + (number of products in that category that sold more)`. The aggregation cron
-(Reports → refresh statistics, or `bin/magento` report aggregation) must have run
-for the tables to be populated.
+`1 + (number of products in that category that sold more)`, so tied products
+share a rank. The aggregation cron (Reports → refresh statistics, or
+`bin/magento` report aggregation) must have run for the tables to be populated.
+
+Two things bound what the ranking can contain:
+
+- **The period is a bucket, not a lifetime total.** Each aggregated table holds
+  one row per (period, store, product), and queries are constrained to the
+  *current* bucket — sales so far today, this month, or this year, in the store's
+  timezone. Early in a bucket the ranking therefore covers a partial period; on
+  **Daily**, shortly after midnight, it may be empty.
+- **Only publicly visible products rank.** Products that are disabled, set to
+  "Not Visible Individually", or not assigned to the request's website are
+  dropped, and ranks are numbered afterwards so they stay contiguous. Category
+  ids that do not belong to the store's own tree are rejected, and badges never
+  rank a product against another store view's categories.
 
 ## Configuration
 
-Admin → Stores → Configuration → **Catalog → Best Sellers**:
+Admin → Stores → Configuration → **Magenx → Best Sellers**:
 
 - **General**: Enable Best Sellers, Number of Products (default 20), Report Period
   (Daily / Monthly / Yearly, default Monthly).
@@ -51,4 +66,16 @@ When the feature is disabled the `bestSellers` query returns an empty list and t
 bin/magento module:enable Magenx_BestSellerGraphQl
 bin/magento setup:upgrade
 bin/magento setup:di:compile   # production mode
+```
+
+## Tests
+
+Unit tests live in `Test/Unit` and run from a Magento installation that has the
+module in place — they mock Magento interfaces, so they need `magento/framework`
+on the autoloader and cannot run against a bare checkout of this repo:
+
+```
+bin/magento dev:tests:run unit
+# or, for this module only:
+vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist vendor/magenxcommerce/module-best-seller-graph-ql/Test/Unit
 ```
