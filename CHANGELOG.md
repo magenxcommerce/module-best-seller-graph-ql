@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v1.0.0...v1.0.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* Refactor best-seller ranking to batch-resolve badges and filter products ([#5](https://github.com/magenxcommerce/module-best-seller-graph-ql/issues/5)) ([526e55c](https://github.com/magenxcommerce/module-best-seller-graph-ql/commit/526e55ca806a2a4384bd6ee0a86b3bbbfe95f172))
+
 ## 1.0.0 (2026-08-11)
 
 
