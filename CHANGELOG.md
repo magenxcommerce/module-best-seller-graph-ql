@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v1.0.1...v1.0.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* call Visibility::getVisibleInSiteIds() on an instance, not statically ([#8](https://github.com/magenxcommerce/module-best-seller-graph-ql/issues/8)) ([0fc9b5e](https://github.com/magenxcommerce/module-best-seller-graph-ql/commit/0fc9b5ebab30ceaa9a6dbb77988126ce2878fece))
+
 ## [1.0.1](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v1.0.0...v1.0.1) (2026-08-13)
 
 
