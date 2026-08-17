@@ -13,6 +13,7 @@ use Magenx\BestSellerGraphQl\Model\Resolver\BestSellers;
 use Magenx\BestSellerGraphQl\Model\StoreCategoryTree;
 use Magento\Catalog\Model\Product;
 use Magento\Catalog\Model\ResourceModel\Product\Collection;
+use Magento\Catalog\Model\Product\Visibility;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\Framework\GraphQl\Config\Element\Field;
 use Magento\Framework\GraphQl\Exception\GraphQlInputException;
@@ -49,6 +50,11 @@ class BestSellersTest extends TestCase
     private $collectionFactory;
 
     /**
+     * @var Visibility&MockObject
+     */
+    private $visibility;
+
+    /**
      * @var BestSellers
      */
     private $resolver;
@@ -62,16 +68,19 @@ class BestSellersTest extends TestCase
         $this->provider = $this->createMock(BestSellerProvider::class);
         $this->storeCategoryTree = $this->createMock(StoreCategoryTree::class);
         $this->collectionFactory = $this->createMock(CollectionFactory::class);
+        $this->visibility = $this->createMock(Visibility::class);
 
         $this->config->method('isEnabled')->willReturn(true);
         $this->config->method('getCount')->willReturn(20);
         $this->config->method('getPeriod')->willReturn(Period::PERIOD_MONTH);
+        $this->visibility->method('getVisibleInSiteIds')->willReturn([1, 2, 3]);
 
         $this->resolver = new BestSellers(
             $this->config,
             $this->provider,
             $this->storeCategoryTree,
-            $this->collectionFactory
+            $this->collectionFactory,
+            $this->visibility
         );
     }
 
@@ -92,7 +101,8 @@ class BestSellersTest extends TestCase
             $config,
             $this->provider,
             $this->storeCategoryTree,
-            $this->collectionFactory
+            $this->collectionFactory,
+            $this->visibility
         );
 
         $this->assertSame(['items' => [], 'total_count' => 0], $this->invoke($resolver));
