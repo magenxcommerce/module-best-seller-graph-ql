@@ -52,12 +52,14 @@ class BestSellers implements ResolverInterface
      * @param BestSellerProvider $provider
      * @param StoreCategoryTree $storeCategoryTree
      * @param CollectionFactory $productCollectionFactory
+     * @param Visibility $visibility
      */
     public function __construct(
         private readonly Config $config,
         private readonly BestSellerProvider $provider,
         private readonly StoreCategoryTree $storeCategoryTree,
-        private readonly CollectionFactory $productCollectionFactory
+        private readonly CollectionFactory $productCollectionFactory,
+        private readonly Visibility $visibility
     ) {
     }
 
@@ -154,7 +156,7 @@ class BestSellers implements ResolverInterface
         $collection->addIdFilter($productIds);
         $collection->addWebsiteFilter((int) $store->getWebsiteId());
         $collection->addAttributeToFilter('status', ['eq' => Status::STATUS_ENABLED]);
-        $collection->addAttributeToFilter('visibility', ['in' => Visibility::getVisibleInSiteIds()]);
+        $collection->addAttributeToFilter('visibility', ['in' => $this->visibility->getVisibleInSiteIds()]);
 
         $products = [];
         foreach ($collection as $product) {
