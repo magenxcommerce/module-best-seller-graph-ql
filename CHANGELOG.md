@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v1.0.2...v2.0.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* BestSellerItem.qty_ordered is removed from the schema. The storefront never selected it.
+
+### Bug Fixes
+
+* Optimize product hydration and category loading queries ([#10](https://github.com/magenxcommerce/module-best-seller-graph-ql/issues/10)) ([f98b197](https://github.com/magenxcommerce/module-best-seller-graph-ql/commit/f98b1978d6c75f87f1b5fb4c6323ccaca00b9c27))
+
 ## [1.0.2](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v1.0.1...v1.0.2) (2026-08-17)
 
 
