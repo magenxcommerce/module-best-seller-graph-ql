@@ -191,7 +191,11 @@ class BestSellersTest extends TestCase
 
         $this->assertSame(1, $result['items'][0]['rank']);
         $this->assertSame(20, $result['items'][0]['product']['entity_id']);
-        $this->assertSame(80.0, $result['items'][0]['qty_ordered']);
+        $this->assertArrayNotHasKey(
+            'qty_ordered',
+            $result['items'][0],
+            'Sales volume must not be published by a public query'
+        );
 
         $this->assertSame(2, $result['items'][1]['rank']);
         $this->assertSame(30, $result['items'][1]['product']['entity_id']);

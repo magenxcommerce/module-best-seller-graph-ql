@@ -21,7 +21,7 @@ module adds that coverage without touching any core module (the same
   per-category badge (`rank`, `category_id`, `category_name`, `category_url_key`)
   computed as the product's best rank across the categories it belongs to, or
   `null` when it doesn't rank within the configured threshold. Implemented as a
-  **batch resolver**: an entire grid costs a bounded pair of queries, so it is
+  **batch resolver**: an entire grid costs a fixed handful of queries, so it is
   safe to select on listing pages as well as the PDP.
 - **`StoreConfig` flags** — `best_seller_enabled`, `best_seller_count`,
   `best_seller_period`, `best_seller_badge_enabled`, `best_seller_badge_max_rank`
@@ -47,7 +47,11 @@ Two things bound what the ranking can contain:
   "Not Visible Individually", or not assigned to the request's website are
   dropped, and ranks are numbered afterwards so they stay contiguous. Category
   ids that do not belong to the store's own tree are rejected, and badges never
-  rank a product against another store view's categories.
+  rank a product against another store view's categories or name a category
+  that is disabled in the store view.
+- **Quantities stay private.** The query exposes each product's `rank`, never
+  the units sold — `bestSellers` is unauthenticated, and raw sales volume is
+  business data.
 
 ## Configuration
 

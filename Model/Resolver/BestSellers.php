@@ -120,8 +120,9 @@ class BestSellers implements ResolverInterface
             $productData['model'] = $product;
 
             $items[] = [
+                // Rank only: the raw quantity is store sales volume, which an
+                // unauthenticated query must not publish.
                 'rank' => ++$rank,
-                'qty_ordered' => $candidate['qty_ordered'],
                 // Consumed by the BestSellerProduct field resolver.
                 'product' => $productData,
             ];
