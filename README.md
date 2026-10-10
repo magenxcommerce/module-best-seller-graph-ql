@@ -15,8 +15,9 @@ module adds that coverage without touching any core module (the same
   best-selling products, store-wide or scoped to a single category, ordered by
   quantity sold over the configured report period. Each `BestSellerItem` carries
   a `rank` and resolves a full `ProductInterface` (so the storefront can select
-  any product fields it needs). The whole page costs one product query, not one
-  per row.
+  any product fields it needs). Visibility is checked on ids alone and only the
+  products that make the page are hydrated, so the whole page costs two product
+  queries, not one per row.
 - **`ProductInterface.best_seller: BestSellerBadge`** — an Amazon-style
   per-category badge (`rank`, `category_id`, `category_name`, `category_url_key`)
   computed as the product's best rank across the categories it belongs to, or

@@ -28,9 +28,10 @@ use Magento\Store\Api\Data\StoreInterface;
  * assigned only afterwards, which keeps them contiguous (1..N) instead of
  * leaving holes where a hidden product used to sit.
  *
- * The surviving products are loaded once, as a single collection, and handed to
- * {@see BestSellerProduct} on the item — so a wide list costs one product query,
- * not one per row.
+ * Visibility is checked on ids alone, and only the products that make the page
+ * are then hydrated — once, as a single collection — and handed to
+ * {@see BestSellerProduct} on the item. A wide list costs two product queries,
+ * not one per row, and never hydrates the over-fetched candidates.
  *
  * Returns an empty list (rather than erroring) when the feature is disabled or
  * the requested category is not this store's to rank, so the storefront degrades
@@ -104,14 +105,29 @@ class BestSellers implements ResolverInterface
             return $empty;
         }
 
-        $products = $this->loadVisibleProducts(array_column($candidates, 'product_id'), $store);
+        // Rank on a cheap id-only visibility check first, then hydrate just
+        // the products that made the page — not every over-fetched candidate.
+        $visibleIds = array_flip($this->filterVisibleIds(array_column($candidates, 'product_id'), $store));
+
+        $rankedIds = [];
+        foreach ($candidates as $candidate) {
+            if (!isset($visibleIds[$candidate['product_id']])) {
+                continue; // disabled, not visible, or not in this website
+            }
+            $rankedIds[] = $candidate['product_id'];
+            if (count($rankedIds) === $limit) {
+                break;
+            }
+        }
+
+        $products = $rankedIds ? $this->loadProducts($rankedIds, $store) : [];
 
         $items = [];
         $rank = 0;
-        foreach ($candidates as $candidate) {
-            $product = $products[$candidate['product_id']] ?? null;
+        foreach ($rankedIds as $productId) {
+            $product = $products[$productId] ?? null;
             if ($product === null) {
-                continue; // disabled, not visible, or not in this website
+                continue; // removed between the two reads
             }
 
             $productData = $product->getData();
@@ -126,10 +142,6 @@ class BestSellers implements ResolverInterface
                 // Consumed by the BestSellerProduct field resolver.
                 'product' => $productData,
             ];
-
-            if ($rank === $limit) {
-                break;
-            }
         }
 
         return [
@@ -139,25 +151,44 @@ class BestSellers implements ResolverInterface
     }
 
     /**
-     * Load the ranked products that the storefront may show, keyed by id.
+     * The subset of the candidate ids the storefront may show: enabled,
+     * visible in catalog/search, and assigned to the store's website.
      *
-     * Filtering on the attributes directly (rather than via the collection's
-     * visibility limitation, which joins the category index) means a product
-     * that sells well but sits in no category is still returned.
+     * Ids only — no attribute values are hydrated for candidates that are
+     * over-fetched and then discarded. Filtering on the attributes directly
+     * (rather than via the collection's visibility limitation, which joins the
+     * category index) means a product that sells well but sits in no category
+     * still qualifies.
      *
      * @param int[] $productIds
      * @param StoreInterface $store
+     * @return int[]
+     */
+    private function filterVisibleIds(array $productIds, StoreInterface $store): array
+    {
+        $collection = $this->productCollectionFactory->create();
+        $collection->setStoreId((int) $store->getId());
+        $collection->addIdFilter($productIds);
+        $collection->addWebsiteFilter((int) $store->getWebsiteId());
+        $collection->addAttributeToFilter('status', ['eq' => Status::STATUS_ENABLED]);
+        $collection->addAttributeToFilter('visibility', ['in' => $this->visibility->getVisibleInSiteIds()]);
+
+        return array_map('intval', $collection->getAllIds());
+    }
+
+    /**
+     * Load the page's products, keyed by id, for the ProductInterface resolvers.
+     *
+     * @param int[] $productIds already filtered by {@see filterVisibleIds()}
+     * @param StoreInterface $store
      * @return array<int, \Magento\Catalog\Api\Data\ProductInterface>
      */
-    private function loadVisibleProducts(array $productIds, StoreInterface $store): array
+    private function loadProducts(array $productIds, StoreInterface $store): array
     {
         $collection = $this->productCollectionFactory->create();
         $collection->setStoreId((int) $store->getId());
         $collection->addAttributeToSelect('*');
         $collection->addIdFilter($productIds);
-        $collection->addWebsiteFilter((int) $store->getWebsiteId());
-        $collection->addAttributeToFilter('status', ['eq' => Status::STATUS_ENABLED]);
-        $collection->addAttributeToFilter('visibility', ['in' => $this->visibility->getVisibleInSiteIds()]);
 
         $products = [];
         foreach ($collection as $product) {

@@ -202,6 +202,48 @@ class BestSellersTest extends TestCase
     }
 
     /**
+     * Candidates are over-fetched to survive filtering, but only the products
+     * that make the page are hydrated with their attribute values.
+     *
+     * @return void
+     */
+    public function testOnlyThePagesProductsAreHydrated(): void
+    {
+        $this->provider->method('getBestSellers')->willReturn([
+            ['product_id' => 10, 'qty_ordered' => 90.0],
+            ['product_id' => 20, 'qty_ordered' => 80.0],
+            ['product_id' => 30, 'qty_ordered' => 70.0],
+            ['product_id' => 40, 'qty_ordered' => 60.0],
+            ['product_id' => 50, 'qty_ordered' => 50.0],
+        ]);
+
+        $hydrated = $this->stubLoadedProducts([20, 30, 40, 50]);
+
+        $result = $this->invoke($this->resolver, ['pageSize' => 2]);
+
+        $this->assertSame([20, 30], $hydrated->getArrayCopy());
+        $this->assertSame([1, 2], array_column($result['items'], 'rank'));
+    }
+
+    /**
+     * When no candidate is visible there is nothing to hydrate.
+     *
+     * @return void
+     */
+    public function testNoVisibleCandidatesSkipsHydration(): void
+    {
+        $this->provider->method('getBestSellers')->willReturn([
+            ['product_id' => 10, 'qty_ordered' => 90.0],
+        ]);
+
+        $filter = $this->createMock(Collection::class);
+        $filter->method('getAllIds')->willReturn([]);
+        $this->collectionFactory->expects($this->once())->method('create')->willReturn($filter);
+
+        $this->assertSame(['items' => [], 'total_count' => 0], $this->invoke($this->resolver));
+    }
+
+    /**
      * The loaded product model is attached under `model`, the contract the
      * CatalogGraphQl field resolvers read from.
      *
@@ -220,30 +262,51 @@ class BestSellersTest extends TestCase
     }
 
     /**
-     * Make the collection factory hand back a collection carrying these ids.
+     * Make the collection factory model the two reads: the id-only visibility
+     * filter (which reports `$visibleIds`), then the hydration of whatever ids
+     * the resolver asks for. The ids it hydrates are returned by reference so
+     * a test can assert nothing beyond the page was loaded.
      *
-     * @param int[] $productIds
-     * @return void
+     * @param int[] $visibleIds
+     * @return \ArrayObject<int, int> the ids passed to the hydrating collection
      */
-    private function stubLoadedProducts(array $productIds): void
+    private function stubLoadedProducts(array $visibleIds): \ArrayObject
     {
-        $products = [];
-        foreach ($productIds as $productId) {
-            $product = $this->createMock(Product::class);
-            $product->method('getId')->willReturn($productId);
-            $product->method('getData')->willReturn(['entity_id' => $productId]);
-            $products[] = $product;
+        $fluent = ['setStoreId', 'addAttributeToSelect', 'addWebsiteFilter', 'addAttributeToFilter'];
+
+        $filter = $this->createMock(Collection::class);
+        foreach ([...$fluent, 'addIdFilter'] as $method) {
+            $filter->method($method)->willReturnSelf();
         }
+        // Magento hands ids back as strings.
+        $filter->method('getAllIds')->willReturn(array_map('strval', $visibleIds));
+        $filter->expects($this->never())->method('getIterator');
 
-        $fluent = ['setStoreId', 'addAttributeToSelect', 'addIdFilter', 'addWebsiteFilter', 'addAttributeToFilter'];
-
-        $collection = $this->createMock(Collection::class);
+        $hydrated = new \ArrayObject();
+        $loader = $this->createMock(Collection::class);
         foreach ($fluent as $method) {
-            $collection->method($method)->willReturnSelf();
+            $loader->method($method)->willReturnSelf();
         }
-        $collection->method('getIterator')->willReturn(new \ArrayIterator($products));
+        $loader->method('addIdFilter')->willReturnCallback(
+            function (array $ids) use ($loader, $hydrated) {
+                $hydrated->exchangeArray(array_values($ids));
+                return $loader;
+            }
+        );
+        $loader->method('getIterator')->willReturnCallback(function () use ($hydrated) {
+            $products = [];
+            foreach ($hydrated as $productId) {
+                $product = $this->createMock(Product::class);
+                $product->method('getId')->willReturn($productId);
+                $product->method('getData')->willReturn(['entity_id' => $productId]);
+                $products[] = $product;
+            }
+            return new \ArrayIterator($products);
+        });
 
-        $this->collectionFactory->method('create')->willReturn($collection);
+        $this->collectionFactory->method('create')->willReturnOnConsecutiveCalls($filter, $loader);
+
+        return $hydrated;
     }
 
     /**
