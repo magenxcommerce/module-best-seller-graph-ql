@@ -60,6 +60,13 @@ class BestSellersTest extends TestCase
     private $resolver;
 
     /**
+     * Ids the hydrating product collection was asked to load.
+     *
+     * @var int[]
+     */
+    private $hydratedIds = [];
+
+    /**
      * @inheritDoc
      */
     protected function setUp(): void
@@ -217,11 +224,11 @@ class BestSellersTest extends TestCase
             ['product_id' => 50, 'qty_ordered' => 50.0],
         ]);
 
-        $hydrated = $this->stubLoadedProducts([20, 30, 40, 50]);
+        $this->stubLoadedProducts([20, 30, 40, 50]);
 
         $result = $this->invoke($this->resolver, ['pageSize' => 2]);
 
-        $this->assertSame([20, 30], $hydrated->getArrayCopy());
+        $this->assertSame([20, 30], $this->hydratedIds);
         $this->assertSame([1, 2], array_column($result['items'], 'rank'));
     }
 
@@ -264,13 +271,14 @@ class BestSellersTest extends TestCase
     /**
      * Make the collection factory model the two reads: the id-only visibility
      * filter (which reports `$visibleIds`), then the hydration of whatever ids
-     * the resolver asks for. The ids it hydrates are returned by reference so
-     * a test can assert nothing beyond the page was loaded.
+     * the resolver asks for. The ids it hydrates are recorded in
+     * {@see $hydratedIds} so a test can assert nothing beyond the page was
+     * loaded.
      *
      * @param int[] $visibleIds
-     * @return \ArrayObject<int, int> the ids passed to the hydrating collection
+     * @return void
      */
-    private function stubLoadedProducts(array $visibleIds): \ArrayObject
+    private function stubLoadedProducts(array $visibleIds): void
     {
         $fluent = ['setStoreId', 'addAttributeToSelect', 'addWebsiteFilter', 'addAttributeToFilter'];
 
@@ -282,20 +290,20 @@ class BestSellersTest extends TestCase
         $filter->method('getAllIds')->willReturn(array_map('strval', $visibleIds));
         $filter->expects($this->never())->method('getIterator');
 
-        $hydrated = new \ArrayObject();
+        $this->hydratedIds = [];
         $loader = $this->createMock(Collection::class);
         foreach ($fluent as $method) {
             $loader->method($method)->willReturnSelf();
         }
         $loader->method('addIdFilter')->willReturnCallback(
-            function (array $ids) use ($loader, $hydrated) {
-                $hydrated->exchangeArray(array_values($ids));
+            function (array $ids) use ($loader) {
+                $this->hydratedIds = array_values($ids);
                 return $loader;
             }
         );
-        $loader->method('getIterator')->willReturnCallback(function () use ($hydrated) {
+        $loader->method('getIterator')->willReturnCallback(function () {
             $products = [];
-            foreach ($hydrated as $productId) {
+            foreach ($this->hydratedIds as $productId) {
                 $product = $this->createMock(Product::class);
                 $product->method('getId')->willReturn($productId);
                 $product->method('getData')->willReturn(['entity_id' => $productId]);
@@ -305,8 +313,6 @@ class BestSellersTest extends TestCase
         });
 
         $this->collectionFactory->method('create')->willReturnOnConsecutiveCalls($filter, $loader);
-
-        return $hydrated;
     }
 
     /**
