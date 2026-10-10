@@ -29,5 +29,12 @@
         "psr-4": {
             "Magenx\\BestSellerGraphQl\\": ""
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Magento\\Catalog\\Model\\ResourceModel\\Category\\": "Test/Unit/Generated/CatalogCategory/",
+            "Magento\\Catalog\\Model\\ResourceModel\\Product\\": "Test/Unit/Generated/CatalogProduct/",
+            "Magento\\GraphQl\\Model\\Query\\": "Test/Unit/Generated/GraphQlQuery/"
+        }
     }
 }
