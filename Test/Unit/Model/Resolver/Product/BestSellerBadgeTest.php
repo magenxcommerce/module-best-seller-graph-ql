@@ -11,12 +11,12 @@ use Magenx\BestSellerGraphQl\Model\Config;
 use Magenx\BestSellerGraphQl\Model\Config\Source\Period;
 use Magenx\BestSellerGraphQl\Model\Resolver\Product\BestSellerBadge;
 use Magenx\BestSellerGraphQl\Model\StoreCategoryTree;
-use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Magento\Catalog\Api\Data\ProductInterface;
 // The concrete model on purpose: url_key is not on CategoryInterface, so the
-// resolver's getUrlKey() call relies on what the repository actually returns.
+// resolver's getUrlKey() call relies on what the collection actually yields.
 use Magento\Catalog\Model\Category;
-use Magento\Framework\Exception\NoSuchEntityException;
+use Magento\Catalog\Model\ResourceModel\Category\Collection as CategoryCollection;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Framework\GraphQl\Config\Element\Field;
 use Magento\Framework\GraphQl\Query\Resolver\BatchRequestItemInterface;
 use Magento\GraphQl\Model\Query\ContextExtensionInterface;
@@ -46,9 +46,9 @@ class BestSellerBadgeTest extends TestCase
     private $storeCategoryTree;
 
     /**
-     * @var CategoryRepositoryInterface&MockObject
+     * @var CategoryCollectionFactory&MockObject
      */
-    private $categoryRepository;
+    private $categoryCollectionFactory;
 
     /**
      * @var BestSellerBadge
@@ -63,7 +63,7 @@ class BestSellerBadgeTest extends TestCase
         $this->config = $this->createMock(Config::class);
         $this->provider = $this->createMock(BestSellerProvider::class);
         $this->storeCategoryTree = $this->createMock(StoreCategoryTree::class);
-        $this->categoryRepository = $this->createMock(CategoryRepositoryInterface::class);
+        $this->categoryCollectionFactory = $this->createMock(CategoryCollectionFactory::class);
 
         $this->config->method('isBadgeEnabled')->willReturn(true);
         $this->config->method('getBadgeMaxRank')->willReturn(10);
@@ -74,7 +74,7 @@ class BestSellerBadgeTest extends TestCase
             $this->config,
             $this->provider,
             $this->storeCategoryTree,
-            $this->categoryRepository
+            $this->categoryCollectionFactory
         );
     }
 
@@ -120,24 +120,44 @@ class BestSellerBadgeTest extends TestCase
     }
 
     /**
-     * Two products ranking in the same category must not load it twice.
+     * Every badge category in the batch is named by one collection load, with
+     * each distinct category asked for once.
      *
      * @return void
      */
-    public function testCategoryIsLoadedOncePerDistinctCategory(): void
+    public function testBadgeCategoriesAreLoadedInOneQuery(): void
     {
         $this->provider->method('getBadges')->willReturn([
             10 => ['rank' => 1, 'category_id' => 17],
             20 => ['rank' => 2, 'category_id' => 17],
+            30 => ['rank' => 1, 'category_id' => 18],
         ]);
 
-        $category = $this->createMock(Category::class);
-        $category->method('getName')->willReturn('Running Shoes');
-        $category->method('getUrlKey')->willReturn('running-shoes');
+        $collection = $this->categoryCollection([
+            17 => ['Running Shoes', 'running-shoes'],
+            18 => ['Trail', 'trail'],
+        ]);
+        $collection->expects($this->once())->method('setStoreId')->with(1);
+        $collection->expects($this->once())
+            ->method('addIdFilter')
+            ->with($this->callback(static fn (array $ids): bool => array_values($ids) === [17, 18]));
 
-        $this->categoryRepository->expects($this->once())
-            ->method('get')
-            ->willReturn($category);
+        $this->categoryCollectionFactory->expects($this->once())
+            ->method('create')
+            ->willReturn($collection);
+
+        $this->resolve([10, 20, 30]);
+    }
+
+    /**
+     * No badge in the batch, no category query.
+     *
+     * @return void
+     */
+    public function testNoBadgesMeansNoCategoryQuery(): void
+    {
+        $this->provider->method('getBadges')->willReturn([]);
+        $this->categoryCollectionFactory->expects($this->never())->method('create');
 
         $this->resolve([10, 20]);
     }
@@ -159,7 +179,7 @@ class BestSellerBadgeTest extends TestCase
             $config,
             $this->provider,
             $this->storeCategoryTree,
-            $this->categoryRepository
+            $this->categoryCollectionFactory
         );
 
         $requests = $this->requestsFor([10, 20]);
@@ -205,8 +225,7 @@ class BestSellerBadgeTest extends TestCase
         $this->provider->method('getBadges')->willReturn([
             10 => ['rank' => 1, 'category_id' => 17],
         ]);
-        $this->categoryRepository->method('get')
-            ->willThrowException(new NoSuchEntityException(__('gone')));
+        $this->categoryCollectionFactory->method('create')->willReturn($this->categoryCollection([]));
 
         $requests = $this->requestsFor([10]);
         $response = $this->resolver->resolve($this->context(), $this->createMock(Field::class), $requests);
@@ -258,11 +277,31 @@ class BestSellerBadgeTest extends TestCase
      */
     private function stubCategory(int $categoryId, string $name, string $urlKey): void
     {
-        $category = $this->createMock(Category::class);
-        $category->method('getName')->willReturn($name);
-        $category->method('getUrlKey')->willReturn($urlKey);
+        $this->categoryCollectionFactory->method('create')
+            ->willReturn($this->categoryCollection([$categoryId => [$name, $urlKey]]));
+    }
 
-        $this->categoryRepository->method('get')->with($categoryId, 1)->willReturn($category);
+    /**
+     * A category collection that iterates the given categories.
+     *
+     * @param array<int, array{0: string, 1: string}> $categories id => [name, url_key]
+     * @return CategoryCollection&MockObject
+     */
+    private function categoryCollection(array $categories)
+    {
+        $models = [];
+        foreach ($categories as $id => [$name, $urlKey]) {
+            $category = $this->createMock(Category::class);
+            $category->method('getId')->willReturn($id);
+            $category->method('getName')->willReturn($name);
+            $category->method('getUrlKey')->willReturn($urlKey);
+            $models[] = $category;
+        }
+
+        $collection = $this->createMock(CategoryCollection::class);
+        $collection->method('getIterator')->willReturn(new \ArrayIterator($models));
+
+        return $collection;
     }
 
     /**
