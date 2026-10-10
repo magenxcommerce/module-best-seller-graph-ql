@@ -16,7 +16,6 @@ type BestSellers @doc(description: "A ranked list of best-selling products.") {
 
 type BestSellerItem @doc(description: "A single best-selling product with its rank.") {
     rank: Int! @doc(description: "The 1-based position of the product in the ranking. Always contiguous: excluded products do not leave gaps.")
-    qty_ordered: Float @doc(description: "Total quantity sold during the current bucket of the report period.")
     product: ProductInterface
         @resolver(class: "Magenx\\BestSellerGraphQl\\Model\\Resolver\\BestSellerProduct")
         @doc(description: "The ranked product.")

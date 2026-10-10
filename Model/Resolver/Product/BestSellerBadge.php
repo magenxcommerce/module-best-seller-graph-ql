@@ -9,9 +9,8 @@ namespace Magenx\BestSellerGraphQl\Model\Resolver\Product;
 use Magenx\BestSellerGraphQl\Model\BestSellerProvider;
 use Magenx\BestSellerGraphQl\Model\Config;
 use Magenx\BestSellerGraphQl\Model\StoreCategoryTree;
-use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Magento\Catalog\Api\Data\ProductInterface;
-use Magento\Framework\Exception\NoSuchEntityException;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Framework\GraphQl\Config\Element\Field;
 use Magento\Framework\GraphQl\Query\Resolver\BatchRequestItemInterface;
 use Magento\Framework\GraphQl\Query\Resolver\BatchResolverInterface;
@@ -24,7 +23,7 @@ use Magento\Framework\GraphQl\Query\Resolver\ContextInterface;
  * A BATCH resolver on purpose: Magento hands it every product request for a
  * grid branch in a single call, so it collects all product ids and computes
  * their badges with {@see BestSellerProvider::getBadges()} in a bounded number
- * of queries (a pair per grid), then maps the answers back. That is what makes
+ * of queries (a handful per grid), then maps the answers back. That is what makes
  * this field safe on listing grids (PRODUCT_CARD_FIELDS) — the same
  * anti-fan-out mechanism the price_history resolver uses. Resolving one product
  * at a time here would put a handful of ranking queries behind every card, so
@@ -40,13 +39,13 @@ class BestSellerBadge implements BatchResolverInterface
      * @param Config $config
      * @param BestSellerProvider $provider
      * @param StoreCategoryTree $storeCategoryTree
-     * @param CategoryRepositoryInterface $categoryRepository
+     * @param CategoryCollectionFactory $categoryCollectionFactory
      */
     public function __construct(
         private readonly Config $config,
         private readonly BestSellerProvider $provider,
         private readonly StoreCategoryTree $storeCategoryTree,
-        private readonly CategoryRepositoryInterface $categoryRepository
+        private readonly CategoryCollectionFactory $categoryCollectionFactory
     ) {
     }
 
@@ -85,9 +84,11 @@ class BestSellerBadge implements BatchResolverInterface
             )
             : [];
 
-        // Category name/url_key lookups are cached per distinct category so a
-        // grid where several products rank in the same category loads it once.
-        $categoryCache = [];
+        // Names and url keys for every badge category in the batch, in one
+        // query — not a repository load per distinct category.
+        $categories = $badges
+            ? $this->loadCategories(array_unique(array_column($badges, 'category_id')), $storeId)
+            : [];
 
         foreach ($requests as $key => $request) {
             $productId = $productIds[$key] ?? 0;
@@ -99,10 +100,7 @@ class BestSellerBadge implements BatchResolverInterface
 
             $badge = $badges[$productId];
             $categoryId = (int) $badge['category_id'];
-            if (!array_key_exists($categoryId, $categoryCache)) {
-                $categoryCache[$categoryId] = $this->loadCategory($categoryId, $storeId);
-            }
-            [$categoryName, $categoryUrlKey] = $categoryCache[$categoryId];
+            [$categoryName, $categoryUrlKey] = $categories[$categoryId] ?? [null, null];
 
             $response->addResponse($request, [
                 'rank' => $badge['rank'],
@@ -131,20 +129,26 @@ class BestSellerBadge implements BatchResolverInterface
     }
 
     /**
-     * Resolve a category's display name + url_key, degrading to nulls when the
-     * category has been removed (still surface the rank without its name).
+     * Display name + url_key per category id, store-scoped. A category removed
+     * since the ranking was read is simply absent, and its badge degrades to
+     * null names (the rank still surfaces).
      *
-     * @param int $categoryId
+     * @param int[] $categoryIds
      * @param int $storeId
-     * @return array{0: string|null, 1: string|null}
+     * @return array<int, array{0: string|null, 1: string|null}>
      */
-    private function loadCategory(int $categoryId, int $storeId): array
+    private function loadCategories(array $categoryIds, int $storeId): array
     {
-        try {
-            $category = $this->categoryRepository->get($categoryId, $storeId);
-            return [$category->getName(), $category->getUrlKey()];
-        } catch (NoSuchEntityException $e) {
-            return [null, null];
+        $collection = $this->categoryCollectionFactory->create();
+        $collection->setStoreId($storeId);
+        $collection->addIdFilter($categoryIds);
+        $collection->addAttributeToSelect(['name', 'url_key']);
+
+        $categories = [];
+        foreach ($collection as $category) {
+            $categories[(int) $category->getId()] = [$category->getName(), $category->getUrlKey()];
         }
+
+        return $categories;
     }
 }

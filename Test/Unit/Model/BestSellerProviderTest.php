@@ -8,7 +8,11 @@ namespace Magenx\BestSellerGraphQl\Test\Unit\Model;
 
 use Magenx\BestSellerGraphQl\Model\BestSellerProvider;
 use Magenx\BestSellerGraphQl\Model\Config\Source\Period;
+use Magento\Catalog\Model\ResourceModel\Category\Collection as CategoryCollection;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\DB\Adapter\AdapterInterface;
+use Magento\Framework\DB\Select;
 use Magento\Framework\Stdlib\DateTime\TimezoneInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -43,7 +47,8 @@ class BestSellerProviderTest extends TestCase
         $this->provider = new BestSellerProvider(
             $this->createMock(ResourceConnection::class),
             $this->timezone,
-            $this->createMock(LoggerInterface::class)
+            $this->createMock(LoggerInterface::class),
+            $this->createMock(CategoryCollectionFactory::class)
         );
     }
 
@@ -169,6 +174,65 @@ class BestSellerProviderTest extends TestCase
             ->willReturn(new \DateTime('2026-08-13 15:04:05'));
 
         $this->periodStart(Period::PERIOD_DAY, 3);
+    }
+
+    /**
+     * A disabled category must not name a badge (its name is not public and
+     * its URL 404s): the product falls back to its best active category.
+     *
+     * @return void
+     */
+    public function testBadgeSkipsDisabledCategories(): void
+    {
+        $this->timezone->method('scopeDate')->willReturn(new \DateTime('2026-08-13'));
+
+        $select = $this->createMock(Select::class);
+        foreach (['from', 'join', 'where', 'group'] as $method) {
+            $select->method($method)->willReturnSelf();
+        }
+
+        $connection = $this->createMock(AdapterInterface::class);
+        $connection->method('select')->willReturn($select);
+        $connection->method('isTableExists')->willReturn(true);
+        $connection->method('fetchAll')->willReturnOnConsecutiveCalls(
+            // Product 10 sits in category 5 (disabled) and 6 (active).
+            [
+                ['product_id' => 10, 'category_id' => 5],
+                ['product_id' => 10, 'category_id' => 6],
+            ],
+            // Product 10 would rank #1 in disabled category 5, but only #2 in
+            // category 6, where product 99 outsold it.
+            [
+                ['category_id' => 5, 'product_id' => 10, 'qty' => 4],
+                ['category_id' => 6, 'product_id' => 10, 'qty' => 4],
+                ['category_id' => 6, 'product_id' => 99, 'qty' => 9],
+            ]
+        );
+
+        $resource = $this->createMock(ResourceConnection::class);
+        $resource->method('getConnection')->willReturn($connection);
+        $resource->method('getTableName')->willReturnArgument(0);
+
+        $categories = $this->createMock(CategoryCollection::class);
+        $categories->expects($this->once())->method('setStoreId')->with(1);
+        $categories->expects($this->once())->method('addIdFilter')->with([5, 6]);
+        $categories->expects($this->once())->method('addAttributeToFilter')->with('is_active', 1);
+        $categories->method('getAllIds')->willReturn(['6']);
+
+        $categoryCollectionFactory = $this->createMock(CategoryCollectionFactory::class);
+        $categoryCollectionFactory->method('create')->willReturn($categories);
+
+        $provider = new BestSellerProvider(
+            $resource,
+            $this->timezone,
+            $this->createMock(LoggerInterface::class),
+            $categoryCollectionFactory
+        );
+
+        $this->assertSame(
+            [10 => ['rank' => 2, 'category_id' => 6]],
+            $provider->getBadges(1, [10], 10, Period::PERIOD_MONTH, 2)
+        );
     }
 
     /**

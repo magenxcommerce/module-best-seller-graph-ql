@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace Magenx\BestSellerGraphQl\Model;
 
 use Magenx\BestSellerGraphQl\Model\Config\Source\Period;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Stdlib\DateTime\TimezoneInterface;
 use Psr\Log\LoggerInterface;
@@ -41,11 +42,13 @@ class BestSellerProvider
      * @param ResourceConnection $resource
      * @param TimezoneInterface $timezone
      * @param LoggerInterface $logger
+     * @param CategoryCollectionFactory $categoryCollectionFactory
      */
     public function __construct(
         private readonly ResourceConnection $resource,
         private readonly TimezoneInterface $timezone,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly CategoryCollectionFactory $categoryCollectionFactory
     ) {
     }
 
@@ -137,9 +140,10 @@ class BestSellerProvider
      * A product's rank in a category is 1 + the number of products in that
      * category that sold strictly more over the period; the product earns the
      * lowest (best) such rank that is at or above the max-rank threshold across
-     * the categories it belongs to. Ties share a rank, as SQL RANK() would.
+     * the active categories it belongs to. Ties share a rank, as SQL RANK()
+     * would.
      *
-     * The whole batch costs two queries regardless of how many products it
+     * The whole batch costs three queries regardless of how many products it
      * carries, which is what makes ProductInterface.best_seller safe on listing
      * grids rather than a per-card fan-out.
      *
@@ -199,6 +203,14 @@ class BestSellerProvider
                 $relevantCategories[$cid] = true;
             }
 
+            // A disabled category is not on the storefront: badging against it
+            // would publish its name and link the shopper to a 404. Dropped
+            // before ranking, so the product falls back to its best *visible*
+            // category instead of losing the badge outright.
+            $relevantCategories = array_intersect_key(
+                $relevantCategories,
+                array_flip($this->filterActiveCategoryIds(array_keys($relevantCategories), $storeId))
+            );
             if (!$relevantCategories) {
                 return [];
             }
@@ -254,6 +266,9 @@ class BestSellerProvider
             foreach ($productIds as $pid) {
                 $best = null;
                 foreach ($productCategories[$pid] ?? [] as $cid) {
+                    if (!isset($relevantCategories[$cid])) {
+                        continue; // disabled in this store view
+                    }
                     $myQty = $targetQty[$cid][$pid] ?? 0.0;
                     if ($myQty <= 0) {
                         continue; // no sales for this product in the period
@@ -278,6 +293,27 @@ class BestSellerProvider
 
             return [];
         }
+    }
+
+    /**
+     * The subset of the given category ids that are active in the store view.
+     *
+     * `is_active` is a store-scoped EAV attribute, so this goes through the
+     * category collection, which resolves the store value with its default
+     * fallback (and the right link field on editions with staging). One query.
+     *
+     * @param int[] $categoryIds
+     * @param int $storeId
+     * @return int[]
+     */
+    private function filterActiveCategoryIds(array $categoryIds, int $storeId): array
+    {
+        $collection = $this->categoryCollectionFactory->create();
+        $collection->setStoreId($storeId);
+        $collection->addIdFilter($categoryIds);
+        $collection->addAttributeToFilter('is_active', 1);
+
+        return array_map('intval', $collection->getAllIds());
     }
 
     /**
