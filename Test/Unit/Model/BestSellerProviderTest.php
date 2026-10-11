@@ -236,6 +236,44 @@ class BestSellerProviderTest extends TestCase
     }
 
     /**
+     * A missing report table is remembered for the request only: once the
+     * aggregation cron has created it, the next request in the same worker
+     * must see it.
+     *
+     * @return void
+     */
+    public function testResetStateForgetsResolvedTables(): void
+    {
+        $connection = $this->createMock(AdapterInterface::class);
+        $connection->expects($this->exactly(2))
+            ->method('isTableExists')
+            ->willReturnOnConsecutiveCalls(false, true);
+
+        $resource = $this->createMock(ResourceConnection::class);
+        $resource->method('getConnection')->willReturn($connection);
+        $resource->method('getTableName')->willReturnArgument(0);
+
+        $provider = new BestSellerProvider(
+            $resource,
+            $this->timezone,
+            $this->createMock(LoggerInterface::class),
+            $this->createMock(CategoryCollectionFactory::class)
+        );
+        $resolve = new \ReflectionMethod($provider, 'resolveAggregatedTable');
+
+        $this->assertNull($resolve->invoke($provider, Period::PERIOD_MONTH));
+        // Memoized within the request: no second metadata round trip.
+        $this->assertNull($resolve->invoke($provider, Period::PERIOD_MONTH));
+
+        $provider->_resetState();
+
+        $this->assertSame(
+            'sales_bestsellers_aggregated_monthly',
+            $resolve->invoke($provider, Period::PERIOD_MONTH)
+        );
+    }
+
+    /**
      * @param float[] $sortedDesc
      * @param float $qty
      * @return int

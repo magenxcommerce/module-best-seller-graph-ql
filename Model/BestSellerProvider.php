@@ -9,6 +9,7 @@ namespace Magenx\BestSellerGraphQl\Model;
 use Magenx\BestSellerGraphQl\Model\Config\Source\Period;
 use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Magento\Framework\Stdlib\DateTime\TimezoneInterface;
 use Psr\Log\LoggerInterface;
 
@@ -26,7 +27,7 @@ use Psr\Log\LoggerInterface;
  * summing the table unfiltered would yield lifetime totals and make the period
  * setting meaningless.
  */
-class BestSellerProvider
+class BestSellerProvider implements ResetAfterRequestInterface
 {
     /** How many of a product's categories to consider when computing its badge. */
     private const MAX_CATEGORIES_PER_PRODUCT = 50;
@@ -50,6 +51,19 @@ class BestSellerProvider
         private readonly LoggerInterface $logger,
         private readonly CategoryCollectionFactory $categoryCollectionFactory
     ) {
+    }
+
+    /**
+     * Forget the resolved tables between requests in a long-running worker.
+     *
+     * The aggregation cron can create a table that was missing, so a "does not
+     * exist" answer must not outlive the request that looked it up.
+     *
+     * @inheritDoc
+     */
+    public function _resetState(): void
+    {
+        $this->tableCache = [];
     }
 
     /**
@@ -413,8 +427,9 @@ class BestSellerProvider
      * (e.g. the Reports best-sellers aggregation has never run) so callers can
      * degrade gracefully instead of letting a "table not found" error surface.
      *
-     * Memoized: the existence check is a metadata round trip, and a single
-     * GraphQL request can resolve both the query and a badge batch.
+     * Memoized per request (see _resetState()): the existence check is a
+     * metadata round trip, and a single GraphQL request can resolve both the
+     * query and a badge batch.
      *
      * @param string $period
      * @return string|null
