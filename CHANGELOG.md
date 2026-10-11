@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v2.0.0...v2.0.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* reset the aggregated table cache after each request ([#12](https://github.com/magenxcommerce/module-best-seller-graph-ql/issues/12)) ([1163bcd](https://github.com/magenxcommerce/module-best-seller-graph-ql/commit/1163bcd4de2e6c1ad5388052390826a92b440818))
+
 ## [2.0.0](https://github.com/magenxcommerce/module-best-seller-graph-ql/compare/v1.0.2...v2.0.0) (2026-10-10)
 
 
